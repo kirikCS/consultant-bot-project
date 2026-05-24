@@ -1,0 +1,54 @@
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      --model /models/Qwen3-1.7B-Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 8192
+      --threads 4
+      --parallel 1
+      --jinja
+    volumes:
+      - ./Qwen3-1.7B-Q4_K_M.gguf:/models/Qwen3-1.7B-Q4_K_M.gguf:ro
+    ports:
+      - "127.0.0.1:18080:8080"
+    mem_limit: 2600m
+    restart: unless-stopped
+
+  embedder:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      --model /models/nomic-embed-text-v1.5.Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8081
+      --embedding
+      --pooling mean
+      -c 2048
+      --threads 2
+    volumes:
+      - ./models/nomic-embed-text-v1.5.Q4_K_M.gguf:/models/nomic-embed-text-v1.5.Q4_K_M.gguf:ro
+    ports:
+      - "127.0.0.1:18081:8081"
+    mem_limit: 500m
+    restart: unless-stopped
+
+  bot:
+    build: ./bot
+    env_file: .env
+    environment:
+      - LLM_URL=http://llm:8080
+      - EMBEDDER_URL=http://embedder:8081
+      - MED_SERVICES_PATH=/app/data/med_services.json
+      - INDICES_DIR=/app/indices
+      - SQLITE_PATH=/app/data/bot.db
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./med_services.json:/app/data/med_services.json:ro
+      - ./indices:/app/indices
+      - ./data:/app/data
+    depends_on:
+      - llm
+      - embedder
+    mem_limit: 700m
+    restart: unless-stopped

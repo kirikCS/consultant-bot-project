@@ -1,0 +1,19 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.DS_Store
+
+# Models & indices are heavy and machine-local
+models/*.gguf
+indices/faiss.index
+indices/bm25.pkl
+indices/meta.parquet
+data/bot.db
+*.gguf
+*.md
+*.json
+localscript-cli/
+.claude/

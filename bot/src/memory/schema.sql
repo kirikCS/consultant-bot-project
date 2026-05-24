@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS turns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ts INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_turns_chat_ts ON turns(chat_id, ts DESC);
