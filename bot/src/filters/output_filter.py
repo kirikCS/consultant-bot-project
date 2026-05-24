@@ -105,6 +105,13 @@ def filter_output(text: str) -> str:
     if latin > 20 and latin > cyrillic * 2:
         return _LANG_FALLBACK
 
+    # Strip all '*' characters — the LLM likes to emit **bold** / *italic*
+    # markdown, but we send to Telegram as plain text, so asterisks render
+    # literally and look broken. Cheaper than parsing markdown.
+    text = text.replace("*", "")
+    # Collapse the double spaces that "**foo**" → "foo" can leave behind
+    text = re.sub(r"  +", " ", text).strip()
+
     if len(text) > _MAX_LEN:
         text = text[: _MAX_LEN - 1] + "…"
 
