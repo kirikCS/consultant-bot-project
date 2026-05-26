@@ -4,23 +4,42 @@ import re
 
 _MAX_LEN = 4000  # Telegram limit is 4096
 
-# Recommendation/advice phrasing — soft list. Only catch first-/second-person
-# direct recommendations. Neutral uses ("врач рекомендует", "рекомендуется
-# обратиться к администратору") are allowed through — they're legitimate.
+# Recommendation/advice phrasing — narrowed to MEDICATION/TREATMENT advice
+# only. Diagnostic suggestions ("вам стоит сдать ферритин и ТТГ", "рекомендую
+# пройти УЗИ", "я бы посоветовала чек-ап Кардио") are legitimate consultative
+# behaviour and pass through. Only patterns explicitly tied to drug/treatment
+# verbs (пить / принимать / выпить / купить лекарство / лечиться) are blocked.
+_MED_VERBS = (
+    r"(?:"
+    r"пи[лть]\w*"            # пить / пил / пила / пили / пить-be
+    r"|пь[еёюя]\w*"          # пьёт / пьют / пью
+    r"|пей(?:те)?"           # пей / пейте
+    r"|вы?пи[лть]\w*"        # выпил / выпила / выпили / выпить
+    r"|вы?пь[еёюя]\w*"       # выпьет / выпью
+    r"|вы?пей(?:те)?"        # выпей / выпейте
+    r"|попи[лть]\w*"
+    r"|пропи[лть]\w*"
+    r"|приня[лт]\w*"         # принял / принять / приняла
+    r"|принима[йлтю]\w*"     # принимать / принимала / принимаю / принимайте
+    r"|принима\w*"           # safety net
+    r"|купи\w+\s+лекарств\w+"
+    r"|лечи(?:ть|ться|тесь)\w*"
+    r")"
+)
+
 _RECOMMENDATION_PATTERNS = [
-    # First-person: "я рекомендую", "я посоветую"
-    re.compile(r"\bя\s+(вам\s+|тебе\s+)?рекоменду[ею]\b", re.I),
-    re.compile(r"\bя\s+(вам\s+|тебе\s+)?(посоветую|порекомендую)\b", re.I),
-    # Direct second-person: "рекомендую вам/тебе X", "вам рекомендую"
-    re.compile(r"\bрекоменду[ею]\s+(вам|тебе)\b", re.I),
-    re.compile(r"\b(вам|тебе)\s+рекоменду[ею]\b", re.I),
-    # Modal advice: "вам стоит/следует/нужно/лучше"
-    re.compile(r"\bвам\s+(стоит|следует|нужно|лучше)\b", re.I),
-    # Suggestion templates
-    re.compile(r"\bя\s+бы\s+(вам\s+)?(посоветовал|выбрал|порекомендовал|предложил)", re.I),
-    re.compile(r"\bлучше\s+(всего\s+)?(выбрать|подойдёт|подходит)\b", re.I),
-    re.compile(r"\bна\s+ваш(ем)?\s+месте\b", re.I),
-    re.compile(r"\bстоит\s+(попробовать|выбрать|взять|пройти|сделать)\b", re.I),
+    # "Рекомендую (вам/тебе) пить/принимать..." → drug recommendation
+    re.compile(r"\bрекоменду[ею]\s+(вам\s+|тебе\s+)?" + _MED_VERBS, re.I),
+    # "Я рекомендую/посоветую/порекомендую (вам/тебе) пить..."
+    re.compile(r"\bя\s+(вам\s+|тебе\s+)?(рекоменду[ею]|посоветую|порекомендую)\s+.{0,20}" + _MED_VERBS, re.I),
+    # "Вам стоит/лучше/следует/нужно пить/принимать..."
+    re.compile(r"\b(вам|тебе)\s+(стоит|лучше|следует|нужно)\s+" + _MED_VERBS, re.I),
+    # "Я бы (вам) посоветовал(а) пить/принимать..."
+    re.compile(r"\bя\s+бы\s+(вам\s+|тебе\s+)?(посоветовал[аи]?|порекомендовал[аи]?)\s+.{0,20}" + _MED_VERBS, re.I),
+    # "На вашем месте я бы выпил/принял..."
+    re.compile(r"\bна\s+ваш(ем)?\s+месте\s+.{0,30}" + _MED_VERBS, re.I),
+    # Direct treatment-recommending: "принимайте/пейте N таблеток"
+    re.compile(r"\b(принимайте|пейте|выпейте)\s+\w+\s+таблет\w*", re.I),
 ]
 
 # Template/structural leakage — the model echoed the prompt scaffold.

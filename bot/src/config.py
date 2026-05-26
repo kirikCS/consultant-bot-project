@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     top_n_final: int = 3
 
     answer_temperature: float = 0.0
-    answer_max_tokens: int = 1024
+    answer_max_tokens: int = 1500
     rerank_temperature: float = 0.0
     rerank_max_tokens: int = 32
 
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     agent_max_iters: int = 3
 
-    http_timeout: float = 60.0
+    http_timeout: float = 240.0
 
 
 settings = Settings()

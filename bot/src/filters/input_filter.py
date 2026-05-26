@@ -31,22 +31,23 @@ _INJECTION_PATTERNS = [
     re.compile(r"\bнапиши\s+(мне\s+)?рецепт\b", re.I),  # "напиши рецепт плова" — meta-injection
 ]
 
-# Soft medical-advice blockers — only the clearest, most unambiguous treatment-
-# seeking phrasings. Patterns like "препарат от X" are removed because they
-# false-trigger on catalog queries about brand names. The OUTPUT filter catches
-# any actual recommendation language the model may emit.
+# Soft medical-advice blockers — only the clearest treatment-seeking phrasings.
+# Symptom mentions ("у меня болит живот") are NOT blocked here: users
+# legitimately describe complaints to ask which analyses to take. The bot's
+# job (with the domain context in the system prompt) is to route them to
+# relevant diagnostic services. Only outright "what should I take?" /
+# "diagnose me" / "how do I treat X?" patterns get auto-refused.
 _RECOMMENDATION_PATTERNS = [
-    # Symptom report — "у меня болит/заболел..."
-    re.compile(r"\bу\s+меня\s+(болит|болят|болело|заболел[аио]?)", re.I),
     # Direct treatment-seeking — "что мне принять/выпить"
     re.compile(r"\bчто\s+(мне\s+)?(принять|принимать|пить|попить|выпить|пропить)\b", re.I),
-    # Asking for personal advice
+    # Asking how to treat / cure
     re.compile(r"\bкак\s+(мне\s+)?(лечить|вылечить|избавиться)\b", re.I),
+    # Asking for a diagnosis
     re.compile(r"\bпоставь\s+(мне\s+)?диагноз", re.I),
     re.compile(r"\bчто\s+(это|у\s+меня)\s+за\s+болезн", re.I),
+    # "Is this dangerous?" — soliciting medical opinion
     re.compile(r"\bопасн[оаыи]\s+ли\s+это", re.I),
-    # Asking the bot to choose for them — borderline; LLM can refuse if it
-    # decides catalog-listing is a better response
+    # Direct "what would you choose / recommend?" — asks bot for opinion
     re.compile(r"\bкак(ой|ую|ое|ие)\s+(бы\s+)?ты\s+(\w+\s+){0,3}(выбрал|посовет|рекоменд|предлож)", re.I),
     re.compile(r"\bты\s+(\w+\s+){0,2}(посовет|порекоменд|рекоменду)\w*", re.I),
     re.compile(r"\bстоит\s+ли\s+мне\b", re.I),
