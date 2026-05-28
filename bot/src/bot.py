@@ -1,3 +1,4 @@
+"""Aiogram-обвязка: диспатчер сообщений Telegram → Pipeline.handle(), отдельная обработка /start и не-текстовых сообщений."""
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,6 @@ def build_dispatcher(pipeline: Pipeline) -> Dispatcher:
     @dp.message(CommandStart())
     async def on_start(message: Message) -> None:
         await message.answer(GREETING)
-        # Record the greeting so the next text message is not treated as a new chat
         await pipeline.mark_greeted(message.chat.id)
 
     @dp.message(F.text)

@@ -1,4 +1,4 @@
-"""Agentic pipeline: input filter → context build → agent loop → output filter."""
+"""Агентный пайплайн обработки одного хода: input filter → сборка контекста → агент-цикл → output filter."""
 from __future__ import annotations
 
 import logging
@@ -38,14 +38,10 @@ class Pipeline:
 
         flt = filter_input(user_text)
         if not flt.passed:
-            # Do NOT store the user message or the refusal in memory: keeping
-            # filter-refused pairs in history caused the LLM to mirror the
-            # refusal on subsequent unrelated questions.
             return flt.refusal or "Извините, я не понял запрос."
 
         cleaned = flt.cleaned
 
-        # Rolling-window context: summary (if compacted) + retrieved relevant excerpts + pinned recent
         history = await self._memory.build_context(chat_id, cleaned)
         t_ctx = time.perf_counter()
 

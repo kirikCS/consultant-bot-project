@@ -1,3 +1,4 @@
+"""In-memory lookup для payload услуг по row-индексу (общему для FAISS / BM25 / TF-IDF)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,8 +7,6 @@ import pandas as pd
 
 
 class Catalog:
-    """In-memory lookup table for service payloads, keyed by FAISS/BM25 row index."""
-
     def __init__(self, df: pd.DataFrame) -> None:
         self._df = df.set_index("row", drop=False)
 

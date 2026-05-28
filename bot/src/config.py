@@ -1,3 +1,4 @@
+"""Конфигурация бота: загружается из переменных окружения / .env через pydantic-settings."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
 
     top_k_dense: int = 20
     top_k_sparse: int = 20
+    top_k_tfidf: int = 20
     rrf_k: int = 60
     rerank_input: int = 10
     top_n_final: int = 3

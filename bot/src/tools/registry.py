@@ -1,4 +1,4 @@
-"""Tool registry: dispatches parsed tool calls to the right tool."""
+"""Реестр инструментов агента: парсит распознанный tool-call JSON и диспатчит вызов соответствующему инструменту."""
 from __future__ import annotations
 
 import logging

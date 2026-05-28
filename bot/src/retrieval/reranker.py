@@ -1,3 +1,4 @@
+"""LFM self-rerank (опционально): просим саму LLM выбрать top-N из набора кандидатов RRF."""
 from __future__ import annotations
 
 import logging
@@ -5,16 +6,29 @@ import re
 
 from src.config import settings
 from src.llm.client import LLMClient
-from src.llm.prompts import RERANK_PROMPT, format_numbered
 
 log = logging.getLogger(__name__)
 
 _NUM_RE = re.compile(r"\d+")
 
+_RERANK_PROMPT = """Из списка ниже выбери {top_n} услуг, наиболее точно соответствующие вопросу клиента.
+
+Вопрос: {query}
+
+Услуги:
+{numbered_candidates}
+
+Ответь ТОЛЬКО номерами через запятую, без пояснений. Пример: 4, 1, 7"""
+
+
+def _format_numbered(payloads: list[dict]) -> str:
+    return "\n".join(
+        f"{i + 1}. {p['name']} (категория: {p['category']}, цена: {p['price']} руб.)"
+        for i, p in enumerate(payloads)
+    )
+
 
 class Reranker:
-    """LFM self-rerank: ask the LLM to pick top-N candidates by index."""
-
     def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
 
@@ -24,9 +38,10 @@ class Reranker:
         if len(candidates) <= top_n:
             return candidates
 
-        prompt = RERANK_PROMPT.format(
+        prompt = _RERANK_PROMPT.format(
             query=query,
-            numbered_candidates=format_numbered(candidates),
+            top_n=top_n,
+            numbered_candidates=_format_numbered(candidates),
         )
         try:
             text = await self._llm.chat(
@@ -45,7 +60,6 @@ class Reranker:
             return candidates[:top_n]
 
         result = [candidates[i] for i in picked]
-        # Pad with RRF order if the LLM returned fewer unique indices than asked
         if len(result) < top_n:
             for c in candidates:
                 if c not in result:

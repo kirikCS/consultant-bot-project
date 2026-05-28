@@ -1,7 +1,7 @@
-"""Multi-turn CLI probe that exercises the full agentic pipeline.
+"""CLI-проба: прогоняет последовательность пользовательских ходов через полный агентный пайплайн.
 
-Usage:
-  python -m src.retrieval.cli "<turn 1>" "<turn 2>" ...
+Использование:
+  python -m src.retrieval.cli "<ход 1>" "<ход 2>" ...
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from src.pipeline import Pipeline
 from src.retrieval.bm25_store import BM25Store
 from src.retrieval.catalog import Catalog
 from src.retrieval.embedder import EmbedderClient
+from src.retrieval.tfidf_store import TfidfStore
 from src.retrieval.vector_store import VectorStore
 from src.tools.registry import ToolRegistry
 from src.tools.search_memory import SearchMemoryTool
@@ -30,6 +31,7 @@ async def run(queries: list[str]) -> None:
     embedder = EmbedderClient()
     vs = VectorStore.load(settings.indices_dir)
     bm25 = BM25Store.load(settings.indices_dir)
+    tfidf = TfidfStore.load(settings.indices_dir)
     catalog = Catalog.load(settings.indices_dir)
 
     memory = ShortTermMemory(db_path=":memory:")
@@ -37,7 +39,11 @@ async def run(queries: list[str]) -> None:
 
     tools = ToolRegistry(
         search_services=SearchServicesTool(
-            vector_store=vs, bm25_store=bm25, catalog=catalog, embedder=embedder
+            vector_store=vs,
+            bm25_store=bm25,
+            tfidf_store=tfidf,
+            catalog=catalog,
+            embedder=embedder,
         ),
         search_memory=SearchMemoryTool(memory=memory),
     )
@@ -57,9 +63,9 @@ async def run(queries: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Drive the bot through a sequence of user turns."
+        description="Прогон бота через последовательность пользовательских ходов."
     )
-    parser.add_argument("queries", nargs="+", help="One or more user turns")
+    parser.add_argument("queries", nargs="+", help="Один или несколько ходов")
     args = parser.parse_args()
     asyncio.run(run(args.queries))
 

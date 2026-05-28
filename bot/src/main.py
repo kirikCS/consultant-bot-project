@@ -1,3 +1,4 @@
+"""Точка входа бота: ждёт upstream-сервисы, собирает индексы при необходимости, поднимает long-polling Telegram."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from src.pipeline import Pipeline
 from src.retrieval.bm25_store import BM25Store
 from src.retrieval.catalog import Catalog
 from src.retrieval.embedder import EmbedderClient
+from src.retrieval.tfidf_store import TfidfStore
 from src.retrieval.vector_store import VectorStore
 from src.tools.registry import ToolRegistry
 from src.tools.search_memory import SearchMemoryTool
@@ -55,6 +57,7 @@ async def main() -> None:
 
     vs = VectorStore.load(settings.indices_dir)
     bm25 = BM25Store.load(settings.indices_dir)
+    tfidf = TfidfStore.load(settings.indices_dir)
     catalog = Catalog.load(settings.indices_dir)
 
     memory = ShortTermMemory()
@@ -62,7 +65,11 @@ async def main() -> None:
 
     tools = ToolRegistry(
         search_services=SearchServicesTool(
-            vector_store=vs, bm25_store=bm25, catalog=catalog, embedder=embedder
+            vector_store=vs,
+            bm25_store=bm25,
+            tfidf_store=tfidf,
+            catalog=catalog,
+            embedder=embedder,
         ),
         search_memory=SearchMemoryTool(memory=memory),
     )

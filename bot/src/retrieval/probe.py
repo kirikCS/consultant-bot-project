@@ -1,3 +1,4 @@
+"""Однопроходная диагностика ретривера: показывает dense / sparse / RRF-merged top-10 для одного запроса."""
 from __future__ import annotations
 
 import argparse

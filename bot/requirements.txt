@@ -5,6 +5,8 @@ pydantic-settings==2.5.2
 aiosqlite==0.20.0
 rank-bm25==0.2.2
 faiss-cpu==1.8.0.post1
+scikit-learn==1.5.1
+scipy==1.13.1
 numpy==1.26.4
 pandas==2.2.2
 pyarrow==17.0.0

@@ -1,3 +1,4 @@
+"""Обёртка над сохранённым rank_bm25.BM25Okapi индексом каталога."""
 from __future__ import annotations
 
 import pickle
@@ -8,8 +9,6 @@ from rank_bm25 import BM25Okapi
 
 
 class BM25Store:
-    """Wraps a persisted rank_bm25.BM25Okapi index."""
-
     def __init__(self, bm25: BM25Okapi) -> None:
         self._bm25 = bm25
 

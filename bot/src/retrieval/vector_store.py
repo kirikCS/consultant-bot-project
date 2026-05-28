@@ -1,3 +1,4 @@
+"""Обёртка над сохранённым FAISS IndexFlatIP (плотные эмбеддинги услуг)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,8 +8,6 @@ import numpy as np
 
 
 class VectorStore:
-    """Wraps a persisted FAISS IndexFlatIP."""
-
     def __init__(self, index: faiss.Index) -> None:
         self._index = index
 

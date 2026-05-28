@@ -1,4 +1,4 @@
-"""Tool: search older conversation history (BM25 over SQLite-backed turns)."""
+"""Инструмент агента: поиск релевантных фрагментов из истории текущего диалога (BM25 + prefix-overlap)."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,6 @@ class SearchMemoryTool:
 
         top_k = max(1, min(int(top_k or 3), 8))
 
-        # Pull from older history (skip the pinned window since the LLM already sees that)
         turns = await self._memory.recall_excluding_pinned(
             chat_id, query, top_k=top_k
         )

@@ -1,4 +1,4 @@
-"""Tool: search the medical-services catalog (FAISS + BM25 + RRF)."""
+"""Инструмент агента: поиск услуг в каталоге медцентра через 3-канальный гибрид (FAISS + BM25 + TF-IDF) с фьюзом RRF."""
 from __future__ import annotations
 
 import logging
@@ -8,6 +8,7 @@ from src.retrieval.bm25_store import BM25Store
 from src.retrieval.catalog import Catalog
 from src.retrieval.embedder import EmbedderClient
 from src.retrieval.hybrid import rrf_merge
+from src.retrieval.tfidf_store import TfidfStore
 from src.retrieval.tokenize import tokenize
 from src.retrieval.vector_store import VectorStore
 
@@ -22,11 +23,13 @@ class SearchServicesTool:
         *,
         vector_store: VectorStore,
         bm25_store: BM25Store,
+        tfidf_store: TfidfStore,
         catalog: Catalog,
         embedder: EmbedderClient,
     ) -> None:
         self._vs = vector_store
         self._bm25 = bm25_store
+        self._tfidf = tfidf_store
         self._catalog = catalog
         self._embedder = embedder
 
@@ -39,7 +42,13 @@ class SearchServicesTool:
         vec = await self._embedder.embed(query)
         dense_hits = self._vs.search(vec, settings.top_k_dense)
         sparse_hits = self._bm25.search(tokenize(query), settings.top_k_sparse)
-        rows = rrf_merge(dense_hits, sparse_hits, k=settings.rrf_k, top=top_k)
+        tfidf_hits = self._tfidf.search(query, settings.top_k_tfidf)
+
+        rows = rrf_merge(
+            dense_hits, sparse_hits, tfidf_hits,
+            k=settings.rrf_k,
+            top=top_k,
+        )
         items = self._catalog.many(rows)
 
         if not items:

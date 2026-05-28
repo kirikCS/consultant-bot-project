@@ -1,12 +1,4 @@
-"""Agent loop: LLM → parse → tool dispatch → result-injection, bounded by max_iters.
-
-Mirrors the FSM from localscript-agent/agent.py but trimmed to two states
-that matter for a Q&A bot:
-
-  LLM_INFERENCE   — call the model, append assistant turn (with <think> stripped)
-  PARSE_AND_ROUTE — if output is a tool call, dispatch + append result, loop;
-                    otherwise return the text as the final answer.
-"""
+"""Agent loop: LLM-вызов -> strip thinking -> парс tool-call -> диспатч инструмента -> инжект результата как user-сообщение"""
 from __future__ import annotations
 
 import logging
@@ -20,12 +12,6 @@ from src.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
 
-# Lightweight intent signal: words/patterns indicating the turn is about a
-# catalog item, not just chit-chat. If present in the LAST user turn AND the
-# model's first move is plain text (no tool call) AND no search has been done
-# yet this turn, we insert ONE search_services call as a safety net. This is
-# NOT a forced pipeline step — it only kicks in when the model fails to
-# recognize a catalog question.
 _CATALOG_SIGNALS = re.compile(
     r"(?:"
     r"\bцен[аы]\b|\bстоит\b|\bстоимост|"
@@ -66,11 +52,17 @@ class Agent:
         msgs = list(messages)
         tool_calls: list[dict] = []
 
-        # Last raw user turn (the catalog-question detector keys off this)
         last_user_text = next(
             (m["content"] for m in reversed(messages) if m.get("role") == "user"),
             "",
         )
+
+        prev_assistant_was_question = False
+        for m in reversed(messages[:-1]):
+            if m.get("role") == "assistant":
+                c = (m.get("content") or "").rstrip().rstrip('"”»\').*')
+                prev_assistant_was_question = "?" in c[-15:]
+                break
 
         for i in range(max_iters):
             raw = await self._llm.chat(
@@ -83,19 +75,31 @@ class Agent:
 
             call = parse_tool_call(raw, self._tools.known_tools)
             if call is None:
-                # Safety net: if the FIRST move is plain prose but the user
-                # turn was clearly a catalog question, inject one search and
-                # let the model answer on the next iteration. This keeps the
-                # tool-as-tool design but covers small-model misses.
-                if (
+                ends_with_question = cleaned.rstrip().endswith(("?", "?!"))
+                trigger_catalog = (
+                    _looks_like_catalog_question(last_user_text)
+                    and not ends_with_question
+                )
+                trigger_post_clarify = prev_assistant_was_question
+                should_force_search = (
                     i == 0
                     and not tool_calls
-                    and _looks_like_catalog_question(last_user_text)
-                ):
-                    log.info("safety-net: forcing search_services for catalog-like input")
+                    and (trigger_catalog or trigger_post_clarify)
+                )
+                if should_force_search:
+                    log.info(
+                        "safety-net: forcing search_services (catalog=%s clarify=%s)",
+                        trigger_catalog, trigger_post_clarify,
+                    )
+                    user_turns = [
+                        m["content"] for m in messages if m.get("role") == "user"
+                    ]
+                    fallback_query = (
+                        " ".join(user_turns[-2:]) if len(user_turns) >= 2 else last_user_text
+                    )
                     fallback_call = {
                         "tool": "search_services",
-                        "query": last_user_text,
+                        "query": fallback_query,
                         "top_k": 5,
                     }
                     tool_calls.append(fallback_call)
@@ -112,7 +116,6 @@ class Agent:
                     )
                     continue
 
-                # Plain prose → final answer
                 return AgentRun(
                     final_text=cleaned or raw.strip(),
                     tool_calls=tool_calls,
@@ -120,10 +123,8 @@ class Agent:
                 )
 
             tool_calls.append(call)
-            # Append assistant's tool call to context so the model sees what it asked for
             msgs.append({"role": "assistant", "content": cleaned})
 
-            # Execute tool, inject result as user-role message
             result = await self._tools.dispatch(chat_id=chat_id, call=call)
             log.info(
                 "agent it=%d tool=%s ok=%s result_len=%d",
@@ -131,7 +132,6 @@ class Agent:
             )
             msgs.append({"role": "user", "content": result.content})
 
-        # Hit the ceiling — force the model to produce a final answer using gathered context
         msgs.append(
             {
                 "role": "user",

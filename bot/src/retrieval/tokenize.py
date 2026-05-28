@@ -1,3 +1,4 @@
+"""Простая Unicode-токенизация для BM25-индексов и query-side обработки."""
 from __future__ import annotations
 
 import re

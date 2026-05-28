@@ -1,3 +1,9 @@
+"""Сборка retrieval-индексов: FAISS (dense), BM25 (sparse), TF-IDF (char-n-gram) + parquet с payload каталога.
+
+Запускается один раз при первом старте бота (или вручную при пересборке).
+Fast-path: если FAISS+BM25+meta уже на диске, а TF-IDF отсутствует — собирает
+только TF-IDF без повторного эмбеддинга 5,8K услуг.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +20,7 @@ from rank_bm25 import BM25Okapi
 
 from src.config import settings
 from src.retrieval.embedder import EmbedderClient
+from src.retrieval.tfidf_store import build_and_save as build_tfidf
 from src.retrieval.tokenize import tokenize
 
 log = logging.getLogger(__name__)
@@ -31,7 +38,6 @@ def _searchable_text(svc: dict) -> str:
 def _load_services(path: str) -> list[dict]:
     raw = Path(path).read_bytes()
     parsed = orjson.loads(raw)
-    # Expected: [{"json": {"data": [ ... services ... ]}}]
     if isinstance(parsed, list) and parsed and "json" in parsed[0]:
         items = parsed[0]["json"].get("data", [])
     elif isinstance(parsed, dict) and "data" in parsed:
@@ -61,13 +67,12 @@ def _build_faiss(vectors: np.ndarray) -> faiss.Index:
     return index
 
 
+_ARTIFACTS = ("faiss.index", "bm25.pkl", "meta.parquet", "tfidf.pkl")
+
+
 def artifacts_exist() -> bool:
     d = Path(settings.indices_dir)
-    return (
-        (d / "faiss.index").exists()
-        and (d / "bm25.pkl").exists()
-        and (d / "meta.parquet").exists()
-    )
+    return all((d / f).exists() for f in _ARTIFACTS)
 
 
 async def build(force: bool = False) -> None:
@@ -76,6 +81,19 @@ async def build(force: bool = False) -> None:
 
     if artifacts_exist() and not force:
         log.info("Indices already present at %s, skipping build", out)
+        return
+
+    existing_core = (
+        (out / "faiss.index").exists()
+        and (out / "bm25.pkl").exists()
+        and (out / "meta.parquet").exists()
+    )
+    if existing_core and not (out / "tfidf.pkl").exists() and not force:
+        log.info("Core indices present; building only TF-IDF char-3-5 index")
+        meta = pd.read_parquet(out / "meta.parquet")
+        texts = meta["text"].astype(str).tolist()
+        vocab, nnz = build_tfidf(texts, str(out))
+        log.info("Wrote TF-IDF index: vocab=%d, nnz=%d", vocab, nnz)
         return
 
     services = _load_services(settings.med_services_path)
@@ -112,6 +130,9 @@ async def build(force: bool = False) -> None:
     )
     meta.to_parquet(out / "meta.parquet", index=False)
     log.info("Wrote meta.parquet: %d rows", len(meta))
+
+    vocab, nnz = build_tfidf(texts, str(out))
+    log.info("Wrote TF-IDF index: vocab=%d, nnz=%d", vocab, nnz)
 
 
 def main() -> None:

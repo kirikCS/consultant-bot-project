@@ -1,19 +1,10 @@
-"""Per-chat conversation memory: SQLite store + rolling-window context builder.
+"""Кратковременная память чата: хранение в SQLite + сборщик скользящего контекстного окна.
 
-Architecture ports the localscript-agent design:
-
-- Every turn is appended to SQLite (durable, survives restarts).
-- `build_context()` composes the LLM `messages` list as:
-    [system stub omitted — pipeline adds it,
-     retrieved-memory block as a synthetic user message (if older relevant turns found),
-     ...pinned-recent raw turns]
-- Older history (everything before the pinned tail) is searched via BM25 +
-  prefix-overlap; the highest-scoring excerpts are rendered into the retrieved
-  block.
-- Auto-compaction fires when the char budget is exceeded: the older 70% of
-  iterations is replaced with a deterministic summary (last user task + last
-  assistant turn + service ids mentioned), the most recent 30% is preserved
-  verbatim. No extra LLM call — cheap and deterministic.
+Архитектура порта из localscript-agent: каждый ход пишется в SQLite, build_context()
+собирает финальное `messages` для LLM — синтетическое сообщение-сводка (если был
+авто-compact), извлечённые BM25-релевантные фрагменты ранней истории, последние
+N закреплённых ходов. (Авто-compact срабатывает по детерминированному правилу
+при превышении бюджета по символам — без вызова LLM.)
 """
 from __future__ import annotations
 
@@ -30,11 +21,6 @@ from src.retrieval.tokenize import tokenize
 _SCHEMA = Path(__file__).with_name("schema.sql").read_text()
 _SERVICE_ID_RE = re.compile(r"\b\d{11}\b")
 
-# Canned refusal openings — both from Python filters and recurring LLM
-# self-mirror copies. If a stored assistant turn STARTS WITH any of these,
-# it (and the user question that triggered it) is excluded from the rolling
-# context. Otherwise prior refusals teach the model to refuse new legit
-# questions by pattern-matching.
 _REFUSAL_PREFIXES = (
     "я не даю медицинских",
     "извините, я не даю медицинских",
@@ -55,11 +41,6 @@ def _is_filter_refusal(content: str) -> bool:
 
 
 def _drop_refusal_pairs(turns: list[dict]) -> list[dict]:
-    """Remove (user-question → assistant-refusal) pairs from chronological turns.
-
-    Prevents the small model from mirroring earlier canned refusals onto new,
-    legitimate queries — exactly the contamination problem the user reported.
-    """
     skip: set[int] = set()
     for i, t in enumerate(turns):
         if t.get("role") == "assistant" and _is_filter_refusal(t.get("content", "")):
@@ -72,7 +53,6 @@ def _drop_refusal_pairs(turns: list[dict]) -> list[dict]:
 
 
 def _approx_tokens(text: str) -> int:
-    """Rough chars/token estimate for mixed RU/EN."""
     return max(1, len(text) // 3)
 
 
@@ -123,16 +103,11 @@ class ShortTermMemory:
             {"id": r[0], "role": r[1], "content": r[2], "ts": r[3]}
             for r in rows
         ]
-        # Strip refusal pairs so the LLM never sees them as a pattern to copy
         return _drop_refusal_pairs(turns)
 
     async def recall_excluding_pinned(
         self, chat_id: int, query: str, top_k: int
     ) -> list[dict]:
-        """BM25 + prefix-overlap recall over the OLDER slice (skip pinned tail).
-
-        Returned turns are sorted chronologically.
-        """
         pinned_n = max(0, int(settings.memory_pinned_recent))
         turns = await self._all_turns(chat_id)
         if not turns:
@@ -172,10 +147,6 @@ class ShortTermMemory:
         retrieved_k: int | None = None,
         max_chars: int | None = None,
     ) -> list[dict]:
-        """Return chat-message list ready to splice between system and current user.
-
-        Shape: [<retrieved-memory block as user msg>?, ...pinned recent raw turns]
-        """
         pinned_recent = pinned_recent if pinned_recent is not None else settings.memory_pinned_recent
         retrieved_k = retrieved_k if retrieved_k is not None else settings.short_term_k
         max_chars = max_chars if max_chars is not None else settings.memory_max_chars
@@ -187,7 +158,6 @@ class ShortTermMemory:
         pinned = turns[-pinned_recent:] if pinned_recent > 0 else []
         older = turns[: len(turns) - len(pinned)]
 
-        # If older history is long, compact it into a single summary block
         summary_msg: dict | None = None
         if _approx_chars(older) > max_chars and len(older) >= 4:
             summary_text = _summarize_older(older)
@@ -195,9 +165,8 @@ class ShortTermMemory:
                 "role": "user",
                 "content": f"[Сводка предыдущего разговора — {len(older)} сообщений]\n{summary_text}",
             }
-            older = []  # already represented by summary
+            older = []
 
-        # Surface relevant excerpts from any non-summarized older slice
         retrieved_block: dict | None = None
         if older and retrieved_k > 0:
             q_tokens = tokenize(query)
@@ -228,9 +197,7 @@ class ShortTermMemory:
             out.append(retrieved_block)
         out.extend({"role": t["role"], "content": t["content"]} for t in pinned)
 
-        # Auto-compact safety net: trim from the oldest pinned end if still over budget
         while _approx_chars(out) > max_chars and len(out) > 2:
-            # Always keep the most recent two turns (last user + last assistant or just last)
             del out[0]
         return out
 
@@ -262,10 +229,6 @@ def _format_retrieved(picks: list[dict]) -> str:
 
 
 def _summarize_older(older: list[dict]) -> str:
-    """Deterministic summary: last user request + last assistant turn + service ids touched.
-
-    No LLM call (small model unreliable at summarization). Cheap and stable.
-    """
     last_user = ""
     last_assistant = ""
     for t in reversed(older):
@@ -276,7 +239,6 @@ def _summarize_older(older: list[dict]) -> str:
         if last_user and last_assistant:
             break
 
-    # Collect mentioned service IDs across the older slice (11-digit catalog ids)
     ids: list[str] = []
     seen: set[str] = set()
     for t in older:

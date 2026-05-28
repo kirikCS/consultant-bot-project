@@ -1,3 +1,4 @@
+"""Асинхронный HTTP-клиент к llama.cpp-серверу (Qwen3-1.7B) с retry-логикой и отключённым keep-alive."""
 from __future__ import annotations
 
 import asyncio
@@ -10,10 +11,6 @@ from src.config import settings
 
 log = logging.getLogger(__name__)
 
-# Catch the whole TransportError family (connect, read, write, protocol,
-# pool, timeout variants — all subclasses). The previous narrow list missed
-# ReadTimeout, which is what fires when llama.cpp's thinking-mode response
-# takes longer than http_timeout.
 _RETRYABLE_EXCEPTIONS = (
     httpx.TransportError,
     httpx.RemoteProtocolError,
@@ -21,14 +18,8 @@ _RETRYABLE_EXCEPTIONS = (
 
 
 class LLMClient:
-    """Async client for the llama.cpp HTTP server running LFM2.5."""
-
     def __init__(self, base_url: str | None = None, timeout: float | None = None) -> None:
         self._base = (base_url or settings.llm_url).rstrip("/")
-        # Disable keep-alive: long thinking-mode LLM calls cause the server to
-        # drop idle connections, and a stale pooled connection then yields a
-        # ConnectError on the next request. Fresh connection per call is more
-        # reliable than chasing keep-alive timeouts.
         self._client = httpx.AsyncClient(
             timeout=timeout or settings.http_timeout,
             limits=httpx.Limits(max_keepalive_connections=0, max_connections=8),
@@ -69,7 +60,7 @@ class LLMClient:
                     raise RuntimeError("malformed LLM response") from exc
             except _RETRYABLE_EXCEPTIONS as exc:
                 last_exc = exc
-                wait = 0.5 * (2 ** attempt)  # 0.5, 1.0, 2.0
+                wait = 0.5 * (2 ** attempt)
                 log.warning(
                     "LLM call attempt %d failed (%s), retrying in %.1fs",
                     attempt + 1, type(exc).__name__, wait,
