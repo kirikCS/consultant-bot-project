@@ -1,4 +1,4 @@
-"""Асинхронный HTTP-клиент к llama.cpp-серверу (Qwen3-1.7B) с retry-логикой и отключённым keep-alive."""
+"""Асинхронный OpenAI-совместимый HTTP-клиент: используется для вызова DeepSeek API (chat/completions) с Bearer-аутентификацией."""
 from __future__ import annotations
 
 import asyncio
@@ -18,11 +18,23 @@ _RETRYABLE_EXCEPTIONS = (
 
 
 class LLMClient:
-    def __init__(self, base_url: str | None = None, timeout: float | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         self._base = (base_url or settings.llm_url).rstrip("/")
+        self._api_key = api_key if api_key is not None else settings.llm_api_key
+        self._model = model or settings.llm_model
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         self._client = httpx.AsyncClient(
             timeout=timeout or settings.http_timeout,
             limits=httpx.Limits(max_keepalive_connections=0, max_connections=8),
+            headers=headers,
         )
 
     async def aclose(self) -> None:
@@ -38,11 +50,11 @@ class LLMClient:
         thinking: bool = True,
     ) -> str:
         payload: dict[str, Any] = {
+            "model": self._model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": False,
-            "chat_template_kwargs": {"enable_thinking": thinking},
         }
         if stop:
             payload["stop"] = stop
@@ -50,7 +62,7 @@ class LLMClient:
         last_exc: Exception | None = None
         for attempt in range(3):
             try:
-                r = await self._client.post(f"{self._base}/v1/chat/completions", json=payload)
+                r = await self._client.post(f"{self._base}/chat/completions", json=payload)
                 r.raise_for_status()
                 data = r.json()
                 try:
@@ -71,7 +83,7 @@ class LLMClient:
 
     async def health(self) -> bool:
         try:
-            r = await self._client.get(f"{self._base}/health", timeout=5.0)
+            r = await self._client.get(f"{self._base}/models", timeout=10.0)
             return r.status_code == 200
         except httpx.HTTPError:
             return False

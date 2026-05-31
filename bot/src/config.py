@@ -7,7 +7,9 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = "changeme"
 
-    llm_url: str = "http://llm:8080"
+    llm_url: str = "https://api.deepseek.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "deepseek-chat"
     embedder_url: str = "http://embedder:8081"
 
     med_services_path: str = "/app/data/med_services.json"
@@ -29,11 +31,11 @@ class Settings(BaseSettings):
     short_term_k: int = 4
     short_term_window: int = 50
     memory_pinned_recent: int = 6
-    memory_max_chars: int = 3500
+    memory_max_chars: int = 6000
 
     agent_max_iters: int = 3
 
-    http_timeout: float = 240.0
+    http_timeout: float = 120.0
 
 
 settings = Settings()
